@@ -32,30 +32,15 @@ def geometric_mean(returns: pd.Series) -> float:
     return np.exp(np.log(returns).sum() / (len(returns) or np.nan)) - 1
 
 
-def compute_stats(
-        trades: Union[List['Trade'], pd.DataFrame],
-        equity: np.ndarray,
-        ohlc_data: pd.DataFrame,
-        strategy_instance: 'Strategy',
-        risk_free_rate: float = 0,
-) -> pd.Series:
-    assert -1 < risk_free_rate < 1
-
-    index = ohlc_data.index
-    dd = 1 - equity / np.maximum.accumulate(equity)
-    dd_dur, dd_peaks = compute_drawdown_duration_peaks(pd.Series(dd, index=index))
-
-    equity_df = pd.DataFrame({
-        'Equity': equity,
-        'DrawdownPct': dd,
-        'DrawdownDuration': dd_dur},
-        index=index)
+def _create_trades_df(trades: Union[List['Trade'], pd.DataFrame]) -> pd.DataFrame:
 
     if isinstance(trades, pd.DataFrame):
         trades_df: pd.DataFrame = trades
     else:
         # Came straight from Backtest.run()
         trades_df = pd.DataFrame({
+            'is_short': [t.is_short for t in trades],
+            'is_long': [t.is_long for t in trades],
             'Size': [t.size for t in trades],
             'EntryBar': [t.entry_bar for t in trades],
             'ExitBar': [t.exit_bar for t in trades],
@@ -68,17 +53,41 @@ def compute_stats(
             'Tag': [t.tag for t in trades],
         })
         trades_df['Duration'] = trades_df['ExitTime'] - trades_df['EntryTime']
-    del trades
 
-    pl = trades_df['PnL']
-    returns = trades_df['ReturnPct']
-    durations = trades_df['Duration']
+    return trades_df
+
+
+def _compute_stats(
+        index,
+        trades_df: pd.DataFrame,
+        equity: np.ndarray,
+        ohlc_data: pd.DataFrame,
+        strategy_instance: 'Strategy',
+        risk_free_rate: float = 0):
+
+    """
+    This is the original compute_stats function from backtesting.py
+    Factored get_trades_df out of it in order to return it from backtest.run
+    """
 
     def _round_timedelta(value, _period=_data_period(index)):
         if not isinstance(value, pd.Timedelta):
             return value
         resolution = getattr(_period, 'resolution_string', None) or _period.resolution
         return value.ceil(resolution)
+
+    dd = 1 - equity / np.maximum.accumulate(equity)
+    dd_dur, dd_peaks = compute_drawdown_duration_peaks(pd.Series(dd, index=index))
+
+    equity_df = pd.DataFrame({
+        'Equity': equity,
+        'DrawdownPct': dd,
+        'DrawdownDuration': dd_dur},
+        index=index)
+
+    pl = trades_df['PnL']
+    returns = trades_df['ReturnPct']
+    durations = trades_df['Duration']
 
     s = pd.Series(dtype=object)
     s.loc['Start'] = index[0]
@@ -147,6 +156,71 @@ def compute_stats(
 
     s = _Stats(s)
     return s
+
+
+def create_summary(
+        trades: Union[List['Trade'], pd.DataFrame],
+        equity: np.ndarray,
+        ohlc_data: pd.DataFrame,
+        strategy_instance: 'Strategy',
+        risk_free_rate: float = 0,
+) -> pd.Series:
+
+    """
+    Refactored this because we want more information than the return of compute_stats.
+    """
+
+    assert -1 < risk_free_rate < 1
+    index = ohlc_data.index
+    trades_df = _create_trades_df(
+        trades
+    )
+
+    stats = _compute_stats(
+        index=index,
+        trades_df=trades_df,
+        ohlc_data=ohlc_data,
+        strategy_instance=strategy_instance,
+        equity=equity,
+        risk_free_rate=0.0
+    )
+
+    summary = {
+        'trades_df': trades_df,
+        'stats': stats
+    }
+
+    return summary
+
+
+def compute_stats(
+        trades: Union[List['Trade'], pd.DataFrame],
+        equity: np.ndarray,
+        ohlc_data: pd.DataFrame,
+        strategy_instance: 'Strategy',
+        risk_free_rate: float = 0,
+) -> pd.Series:
+
+    """
+    Keep this for compatibility with backtesting.py
+    """
+
+    assert -1 < risk_free_rate < 1
+    index = ohlc_data.index
+    trades_df = _create_trades_df(
+        trades
+    )
+
+    _stats = _compute_stats(
+        index=index,
+        trades_df=trades_df,
+        ohlc_data=ohlc_data,
+        strategy_instance=strategy_instance,
+        equity=equity,
+        risk_free_rate=0.0
+    )
+
+    return _stats
 
 
 class _Stats(pd.Series):

@@ -30,7 +30,7 @@ except ImportError:
         return seq
 
 from ._plotting import plot  # noqa: I001
-from ._stats import compute_stats
+from ._stats import create_summary
 from ._util import _as_str, _Indicator, _Data, try_
 
 __pdoc__ = {
@@ -1132,7 +1132,7 @@ class Backtest:
             exclusive_orders=exclusive_orders, index=data.index,
         )
         self._strategy = strategy
-        self._results: Optional[pd.Series] = None
+        self._results: dict = None
 
     def run(self, **kwargs) -> pd.Series:
         """
@@ -1232,7 +1232,7 @@ class Backtest:
             data._set_length(len(self._data))
 
             equity = pd.Series(broker._equity).bfill().fillna(broker._cash).values
-            self._results = compute_stats(
+            self._results = create_summary(
                 trades=broker.closed_trades,
                 equity=equity,
                 ohlc_data=self._data,
