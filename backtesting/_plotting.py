@@ -178,15 +178,15 @@ def plot(*, results: pd.Series,
     # plot() contain some previous run's cruft data (was noticed when
     # TestPlot.test_file_size() test was failing).
     if not filename and not IS_JUPYTER_NOTEBOOK:
-        filename = _windos_safe_filename(str(results._strategy))
+        filename = _windos_safe_filename(str(results['stats']._strategy))
     _bokeh_reset(filename)
 
     COLORS = [BEAR_COLOR, BULL_COLOR]
     BAR_WIDTH = .8
 
-    assert df.index.equals(results['_equity_curve'].index)
-    equity_data = results['_equity_curve'].copy(deep=False)
-    trades = results['_trades']
+    assert df.index.equals(results['stats']['_equity_curve'].index)
+    equity_data = results['stats']['_equity_curve'].copy(deep=False)
+    trades = results['stats']['_trades']
 
     plot_volume = plot_volume and not df.Volume.isnull().all()
     plot_equity = plot_equity and not trades.empty

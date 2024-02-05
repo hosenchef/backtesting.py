@@ -1646,7 +1646,7 @@ class Backtest:
         return plot(
             results=results,
             df=self._data,
-            indicators=results._strategy._indicators,
+            indicators=results['stats']._strategy._indicators,
             filename=filename,
             plot_width=plot_width,
             plot_equity=plot_equity,
