@@ -187,7 +187,8 @@ def create_summary(
 
     summary = {
         'trades_df': trades_df,
-        'stats': stats
+        'stats': stats,
+        'equity': equity
     }
 
     return summary
