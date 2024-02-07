@@ -1323,7 +1323,7 @@ class Backtest:
         maximize_key = None
         if isinstance(maximize, str):
             maximize_key = str(maximize)
-            stats = self._results if self._results is not None else self.run()
+            stats = self._results['stats'] if self._results is not None else self.run()['stats']
             if maximize not in stats:
                 raise ValueError('`maximize`, if str, must match a key in pd.Series '
                                  'result of backtest.run()')
@@ -1408,6 +1408,7 @@ class Backtest:
             backtest_uuid = np.random.random()
             param_batches = list(_batch(param_combos))
             Backtest._mp_backtests[backtest_uuid] = (self, param_batches, maximize)  # type: ignore
+            metrics_with_params_df_list = []
             try:
                 # If multiprocessing start method is 'fork' (i.e. on POSIX), use
                 # a pool of processes to compute results in parallel.
@@ -1418,7 +1419,8 @@ class Backtest:
                                    for i in range(len(param_batches))]
                         for future in _tqdm(as_completed(futures), total=len(futures),
                                             desc='Backtest.optimize'):
-                            batch_index, values = future.result()
+                            batch_index, values, full_stats_list = future.result()
+                            metrics_with_params_df_list.append(pd.DataFrame(full_stats_list.copy()))
                             for value, params in zip(values, param_batches[batch_index]):
                                 heatmap[tuple(params.values())] = value
                 else:
@@ -1426,13 +1428,15 @@ class Backtest:
                         warnings.warn("For multiprocessing support in `Backtest.optimize()` "
                                       "set multiprocessing start method to 'fork'.")
                     for batch_index in _tqdm(range(len(param_batches))):
-                        _, values = Backtest._mp_task(backtest_uuid, batch_index)
+                        _, values, full_stats_list = Backtest._mp_task(backtest_uuid, batch_index)
+                        metrics_with_params_df_list.append(pd.DataFrame(full_stats_list.copy()))
                         for value, params in zip(values, param_batches[batch_index]):
                             heatmap[tuple(params.values())] = value
             finally:
                 del Backtest._mp_backtests[backtest_uuid]
 
             best_params = heatmap.idxmax()
+            metrics_with_params_df = pd.concat(metrics_with_params_df_list, ignore_index=True)
 
             if pd.isnull(best_params):
                 # No trade was made in any of the runs. Just make a random
@@ -1442,7 +1446,7 @@ class Backtest:
                 stats = self.run(**dict(zip(heatmap.index.names, best_params)))
 
             if return_heatmap:
-                return stats, heatmap
+                return stats, heatmap, metrics_with_params_df
             return stats
 
         def _optimize_skopt() -> Union[pd.Series,
@@ -1546,9 +1550,16 @@ class Backtest:
     @staticmethod
     def _mp_task(backtest_uuid, batch_index):
         bt, param_batches, maximize_func = Backtest._mp_backtests[backtest_uuid]
-        return batch_index, [maximize_func(stats) if stats['# Trades'] else np.nan
-                             for stats in (bt.run(**params)
-                                           for params in param_batches[batch_index])]
+        full_stats_list = []
+        target_metric_list = []
+        for params in param_batches[batch_index]:
+            stats = bt.run(**params)['stats']
+            target_metric_list.append(maximize_func(stats) if stats['# Trades'] else np.nan)
+            stats = stats[~stats.index.str.startswith('_')]
+            stats_dict = stats.copy().to_dict()
+            stats_dict.update(params)
+            full_stats_list.append(stats_dict)
+        return batch_index, target_metric_list, full_stats_list
 
     _mp_backtests: Dict[float, Tuple['Backtest', List, Callable]] = {}
 
