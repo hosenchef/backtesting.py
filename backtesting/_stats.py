@@ -53,6 +53,7 @@ def _create_trades_df(trades: Union[List['Trade'], pd.DataFrame]) -> pd.DataFram
             'Tag': [t.tag for t in trades],
         })
         trades_df['Duration'] = trades_df['ExitTime'] - trades_df['EntryTime']
+        trades_df['Duration'] = trades_df['Duration'].dt.round('s')
 
     return trades_df
 
